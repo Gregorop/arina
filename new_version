@@ -1,0 +1,230 @@
+from pygame import *
+#w,h = 1000,800
+w,h = 1920, 1080 #если полный экран, у вас мб другие числа
+win = display.set_mode([w,h], FULLSCREEN)
+
+bg = image.load('bg.jpg') #у вас другое название!
+bg = transform.scale(bg, [w,h])
+
+#класс спрайт!
+class Basic(sprite.Sprite):
+    def __init__(self,filename,x,y,w,h):
+        super().__init__()
+        self.img = image.load(filename)
+
+        self.img = transform.scale(self.img, [w,h])
+
+        self.img_right = self.img
+        self.img_left = transform.flip(self.img,True,False)
+
+        self.rect = Rect(x,y,w,h)
+        
+    def draw(self):
+        win.blit(self.img, (self.rect.x, self.rect.y))
+    
+    def update(self):
+        self.draw()
+
+class Enemy(Basic):
+    def __init__(self, filename, x, y, w, h, _min, _max, speed):
+        super().__init__(filename, x, y, w, h)
+        self._min = _min
+        self._max = _max
+        self.direction = 'right'
+        self.speed = speed
+
+    def update(self):
+        if self.direction == "right":
+            self.rect.x += self.speed
+            if self.rect.x > self._max: self.direction = 'left'
+
+        if self.direction == "left":
+            self.rect.x -= self.speed
+            if self.rect.x < self._min: self.direction = 'right'
+
+        self.draw()
+
+class Hero(Basic):
+    def __init__(self, filename, x, y, w, h):
+        super().__init__(filename, x, y, w, h)
+        self.x_speed = 0
+        self.y_speed = 0
+
+    def update(self):
+        self.rect.x += self.x_speed
+        self.rect.y += self.y_speed
+
+        if self.rect.x < 0: self.rect.x = 0 #если уперлись в край окна
+        if self.rect.right > w: self.rect.right = w
+        if self.rect.bottom > h: self.rect.bottom = h
+        if self.rect.y < 0: self.rect.y = 0
+        
+        walls_touched = sprite.spritecollide(self, walls, False)
+        #анализ стен
+        for wall in walls_touched:
+            if self.x_speed < 0: #если идем справа-налево
+                self.rect.left = wall.rect.right
+            
+            elif self.x_speed > 0: #если идем слева-направо
+                self.rect.right = wall.rect.left
+
+            elif self.y_speed < 0: #если идем наверх
+                self.rect.top = wall.rect.bottom
+            
+            elif self.y_speed > 0: #если идем вниз
+                self.rect.bottom = wall.rect.top
+
+        #анализ касания врагов
+        enemy_touched = sprite.spritecollide(self, enemies, False)
+        if len(enemy_touched) > 0: self.mode = "end"
+
+        #анализ касания финиша
+        finish_touched = sprite.spritecollide(self, finish, False)
+        if len(finish_touched) > 0: self.mode = "finish"
+
+        self.draw()
+
+    def fire(self):
+        if self.img == self.img_right:
+            Bullet(self.rect.centerx, self.rect.centery, direction="right")
+        else:
+            Bullet(self.rect.centerx, self.rect.centery, direction="left")
+        fire_sound.play()
+
+class Wall(sprite.Sprite):
+    def __init__(self,color,x,y,w,h):
+        super().__init__()
+        self.rect = Rect(x,y,w,h)
+        self.color = color
+
+    def draw(self):
+        draw.rect(win, self.color, self.rect)
+
+#версия с пулей-кружком
+class Bullet(sprite.Sprite):
+    def __init__(self,x,y, direction):
+        super().__init__()
+        bullets.add(self)
+        self.rect = Rect(x,y,10,10)
+        self.color = (0,0,0)
+        self.direction = direction
+    
+    def draw(self):
+        draw.circle(win, self.color, self.rect.center, 5)
+
+    def update(self):
+        if self.direction == 'right': self.rect.x += 10
+        if self.direction == 'left': self.rect.x -= 10
+        #проверили края окна
+        if self.rect.x < 0 or self.rect.right > w: bullets.remove(self)
+        
+        #проверили стены
+        walls_touched = sprite.spritecollide(self, walls, False)
+        if len(walls_touched) > 0: bullets.remove(self)
+
+        sprite.spritecollide(self, enemies, True) #проверили врагов
+
+        self.draw()
+    
+# TODO версия с пулей-картинкой
+class Bullet_img(Basic):
+    def __init__(self, filename, x, y, w, h, direction):
+        super().__init__(filename, x, y, w, h)
+        bullets.add(self)
+        self.direction = direction
+
+bullets = sprite.Group()
+
+gg = Hero(x=500, y=200, filename='hero.jpg',w=100,h=100)
+enemies = sprite.Group()
+enemies.add(Enemy(x=300, y=200, filename='ork.png',  w=100, h=100, _min=300,_max=500,speed=5))
+
+finish = sprite.Group()
+finish.add(Basic('finish.png', x=700, y=600, w=100, h=100))
+
+walls = sprite.Group()
+walls.add(Wall(color=(0,0,0), x=250, y=50, w=20, h=250))
+walls.add(Wall(color=(0,0,0), x=50, y=50, w=200, h=25))
+
+mixer.init()
+fire_sound = mixer.Sound('fire.mp3')
+
+#TODO музыка фон
+#mixer.music.load('название fila.mp3') #минута и больше
+
+#mixer.music.play()
+
+timer = time.Clock()
+gg.mode = "game"
+while True:
+    if gg.mode == "game":
+        win.blit(bg, (0,0))
+        gg.update()
+        enemies.update()
+        bullets.update()
+        finish.update()
+
+        for wall in walls:
+            wall.draw()
+
+    if gg.mode == "end":
+        #win.blit((255,0,0)) #легкий вариант без картинки
+        end_bg = image.load('end.jpg')
+        end_bg = transform.scale(end_bg, [w,h])
+        
+        win.blit(end_bg, (0,0))
+
+    if gg.mode == "finish":
+        #win.fill((255,255,255)) #легкий вариант без картинки
+        
+        finish_bg = image.load('finish.jpg')
+        finish_bg = transform.scale(finish_bg, [w,h])
+        
+        win.blit(finish_bg, (0,0))
+
+    if len(enemies) == 0:
+        gg.mode = 'finish'
+
+    for e in event.get():
+        if e.type == KEYDOWN:
+            if e.key == K_SPACE and (gg.mode == "end" or gg.mode == "finish"):
+                gg.rect.x = 500
+                gg.rect.y = 200
+                
+                enemies = sprite.Group()
+                enemies.add(Enemy(x=300, y=200, filename='ork.png',  w=100, h=100, _min=300,_max=500,speed=5))
+
+                bullets = sprite.Group()
+                gg.mode = "game"
+            
+            if e.key == K_ESCAPE: exit() #выход по escape
+            
+            if e.key == K_d: 
+                gg.x_speed = 10
+                gg.y_speed = 0
+                gg.img = gg.img_right
+
+            if e.key == K_a:
+                gg.x_speed = -10
+                gg.y_speed = 0
+                gg.img = gg.img_left
+
+            if e.key == K_w: 
+                gg.x_speed = 0
+                gg.y_speed = -10
+
+            if e.key == K_s:
+                gg.x_speed = 0
+                gg.y_speed = 10
+
+            if e.key == K_SPACE: gg.fire()
+
+        if e.type == KEYUP:
+            if e.key == K_d or e.key == K_a: gg.x_speed = 0
+            if e.key == K_w or e.key == K_s: gg.y_speed = 0
+
+        if e.type == QUIT: exit()
+    
+    timer.tick(30) #30 раз в секунду (фпс)
+    display.update()
+
